@@ -3,31 +3,28 @@
   "version": "1.0.0-pre",
   "license": "MIT",
   "engines": {
-    "node": ">=19"
+    "node": ">=22.12"
   },
   "scripts": {
     "start": "node src/index.js",
     "start:production": "node src/index",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "script/test.sh"
   },
   "dependencies": {
-    "@bedrockio/config": "^2.2.3",
-    "@bedrockio/instrumentation": "^1.4.18",
-    "@koa/router": "^12.0.0",
-    "@sentry/node": "^7.56.0",
-    "joi": "^17.9.2",
-    "koa": "^2.14.2",
-    "koa-body": "^6.0.1",
-    "puppeteer": "5.4"
+    "@bedrockio/config": "^4.0.0",
+    "@koa/router": "^15.7.0",
+    "@sentry/node": "^11.8.0",
+    "joi": "^18.3.0",
+    "koa": "^3.2.1",
+    "koa-body": "^8.0.1",
+    "pino": "^10.4.0",
+    "puppeteer": "^25.14.0"
   },
   "devDependencies": {
-    "eslint": "^8.43.0",
-    "eslint-plugin-bedrock": "^1.0.26",
-    "prettier": "^2.8.8",
-    "prettier-eslint": "^15.0.1"
-  },
-  "volta": {
-    "node": "14.15.1",
-    "yarn": "1.22.5"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10"
   }
 }

@@ -3,26 +3,35 @@ name: Docker Image Test
 on: pull_request
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+
+      - name: Lint
+        run: yarn lint
+
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
 
       - name: Build application
-        run: docker-compose up --build -d 
+        run: docker compose up --build -d
 
-      - name: Test application startup
-        run: docker run --network container:docuprinter appropriate/curl -s --retry 10 --retry-connrefused http://localhost:2305/
+      - name: Test application
+        run: script/test.sh
 
-      - name: Test application pdf
-        run: docker run --network container:docuprinter appropriate/curl -s --retry 2 --retry-connrefused -X POST -H "Accept:application/json" -H "Content-type:application/json" -d '{"html":"<b>hello world <img src=\"https://www.placebear.com/400/300\"/></b>"}' http://localhost:2305/1/pdf --output test.pdf
-
-      - name: Test application pdf (base64)
-        run: docker run --network container:docuprinter appropriate/curl -s --retry 2 --retry-connrefused -X POST -H "Accept:application/json" -H "Content-type:application/json" -d '{"html":"PGI+aGVsbG8gd29ybGQgPGltZyBzcmM9Imh0dHBzOi8vd3d3LnBsYWNlYmVhci5jb20vNDAwLzMwMCIgLz48L2I+", "base64":true}' http://localhost:2305/1/pdf --output test.pdf
-
-
-      - name: Test application image
-        run: docker run --network container:docuprinter appropriate/curl -s --retry 2 --retry-connrefused -X POST -H "Accept:application/json" -H "Content-type:application/json" -d '{"html":"<b>hello world <img src=\"https://www.placebear.com/400/300\"/></b>","export":{"type":"png"}}' http://localhost:2305/1/screenshot --output test.png
-      
-      - name: Test application image (base64)
-        run: docker run --network container:docuprinter appropriate/curl -s --retry 2 --retry-connrefused -X POST -H "Accept:application/json" -H "Content-type:application/json" -d '{"html":"PGI+aGVsbG8gd29ybGQgPGltZyBzcmM9Imh0dHBzOi8vd3d3LnBsYWNlYmVhci5jb20vNDAwLzMwMCIgLz48L2I+","base64":true,"export":{"type":"png"}}' http://localhost:2305/1/screenshot --output test.png
+      - name: Application logs
+        if: failure()
+        run: docker compose logs

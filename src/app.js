@@ -1,13 +1,12 @@
-const Router = require("@koa/router");
-const Koa = require('koa');
-const { koaBody } = require('koa-body');
+const { Router } = require("@koa/router");
+const Koa = require("koa");
+const { koaBody } = require("koa-body");
 const validate = require("./utils/middleware/validate");
 const errorHandler = require("./utils/middleware/error-handler");
 const Sentry = require("@sentry/node");
 const { version } = require("../package.json");
 const config = require("@bedrockio/config");
-const { loggingMiddleware } = require("@bedrockio/instrumentation");
-const { logger, setupTelemetry } = require("@bedrockio/instrumentation");
+const { loggingMiddleware } = require("./utils/logger");
 
 const Joi = require("joi");
 
@@ -16,7 +15,7 @@ const { getBrowser, getPageCount } = require("./utils/browser");
 const app = new Koa();
 
 if (
-  config.has("SENTRY_DSN") &&
+  config.get("SENTRY_DSN") &&
   !["test", "development"].includes(process.env.ENV_NAME)
 ) {
   Sentry.init({
@@ -26,12 +25,28 @@ if (
 }
 
 app
-  .use(koaBody({ multipart: true }))
+  .use(koaBody({ multipart: true, jsonLimit: config.get("BODY_LIMIT") }))
   .use(loggingMiddleware())
   .use(errorHandler);
 
 const router = new Router();
 app.router = router;
+
+async function render(html, base64, print) {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    const content = base64
+      ? Buffer.from(html, "base64").toString("utf8")
+      : html;
+    await page.setContent(content, { waitUntil: "load" });
+    await page.evaluate("document.fonts.ready.then(() => true)");
+    const result = await print(page);
+    return typeof result === "string" ? result : Buffer.from(result);
+  } finally {
+    await page.close();
+  }
+}
 
 router.get("/", (ctx) => {
   ctx.body = {
@@ -47,7 +62,7 @@ router.get("/check-status", async (ctx) => {
   };
 });
 
-// https://pptr.dev/#?product=Puppeteer&version=v8.0.0&show=api-pagescreenshotoptions
+// https://pptr.dev/api/puppeteer.screenshotoptions
 router.post(
   "/1/screenshot",
   validate({
@@ -56,7 +71,7 @@ router.post(
       base64: Joi.boolean().default(false),
       export: Joi.object({
         scale: Joi.number().min(0.1).max(2).default(1),
-        type: Joi.string().allow("jpeg", "png").default("png"),
+        type: Joi.string().valid("jpeg", "png", "webp").default("png"),
         quality: Joi.number().min(0).max(100).default(100),
         fullPage: Joi.boolean().default(true),
         clip: Joi.object({
@@ -66,32 +81,25 @@ router.post(
           height: Joi.number(),
         }),
         omitBackground: Joi.boolean().default(false),
-        encoding: Joi.string().allow("base64", "binary").default("binary"),
-      }),
+        encoding: Joi.string().valid("base64", "binary").default("binary"),
+      }).default(),
     }),
   }),
   async (ctx) => {
     const body = ctx.request.body;
-    const browser = await getBrowser();
-    const page = await browser.newPage();
-
-    let html = body.html;
-    if(body.base64) {
-      let buffer = Buffer.from(html, 'base64');
-      html = buffer.toString('ascii');
-    }
-
-    await page.setContent(html, { waitUntil: "load" });
     const options = body.export;
     if (options.type === "png") {
       delete options.quality;
     }
-    ctx.body = await page.screenshot(options);
-    await page.close();
-  }
+    ctx.body = await render(body.html, body.base64, (page) =>
+      page.screenshot(options),
+    );
+    ctx.type =
+      options.encoding === "base64" ? "text/plain" : `image/${options.type}`;
+  },
 );
 
-// https://pptr.dev/#?product=Puppeteer&version=v8.0.0&show=api-pagepdfoptions
+// https://pptr.dev/api/puppeteer.pdfoptions
 router.post(
   "/1/pdf",
   validate({
@@ -120,7 +128,7 @@ router.post(
             "A3",
             "A4",
             "A5",
-            "A6"
+            "A6",
           )
           .default("Letter"),
         margin: Joi.object({
@@ -130,24 +138,16 @@ router.post(
           left: Joi.string().default(0),
         }),
         preferCSSPageSize: Joi.boolean().default(true),
-      }),
+      }).default(),
     }),
   }),
   async (ctx) => {
     const body = ctx.request.body;
-    const browser = await getBrowser();
-    const page = await browser.newPage();
-
-    let html = body.html;
-    if(body.base64) {
-      let buffer = Buffer.from(html, 'base64');
-      html = buffer.toString('ascii');
-    }
-
-    await page.setContent(html, { waitUntil: "load" });
-    ctx.body = await page.pdf(body.export);
-    await page.close();
-  }
+    ctx.body = await render(body.html, body.base64, (page) =>
+      page.pdf(body.export),
+    );
+    ctx.type = "application/pdf";
+  },
 );
 
 app.use(router.routes());
@@ -157,10 +157,8 @@ app.on("error", (err, ctx) => {
   // dont output stacktraces of errors that is throw with status as they are known
   if (!err.status || err.status === 500) {
     ctx.logger.error(err);
-    Sentry.withScope(function (scope) {
-      scope.addEventProcessor(function (event) {
-        return Sentry.Handlers.parseRequest(event, ctx.request);
-      });
+    Sentry.withScope((scope) => {
+      scope.setContext("http", { method: ctx.method, url: ctx.url });
       Sentry.captureException(err);
     });
   }

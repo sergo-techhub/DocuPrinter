@@ -13,7 +13,7 @@ function validate(schemas, options) {
 
       if (!requestItem) {
         const error = new Error(
-          `Specified schema key '${key}' does not exist in 'request' object`
+          `Specified schema key '${key}' does not exist in 'request' object`,
         );
         error.meta = {
           request: ctx.request,
@@ -28,7 +28,6 @@ function validate(schemas, options) {
 
       if (error) {
         error.details = error.details.map((detail) => {
-          //eslint-disable-line
           return {
             ...detail,
             meta: {
@@ -42,9 +41,9 @@ function validate(schemas, options) {
       }
 
       const unverifiedParams = Object.keys(value || {}).filter(
-        (param) => !schema.extract(param)
+        (param) => !schema.extract(param),
       );
-      unverifiedParams.map((param) => delete value[param]); //eslint-disable-line
+      unverifiedParams.map((param) => delete value[param]);
 
       // Koa (and the koa-qs module) uses a setter which causes the
       // query object to be stringified into a querystring when setting it

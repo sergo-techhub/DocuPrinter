@@ -13,5 +13,5 @@ tmp
 /data
 .terraform/
 globalConfig.json
-test.png
-test.pdf
+test*.pdf
+test*.png

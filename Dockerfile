@@ -1,35 +1,33 @@
-FROM node:19.9.0-alpine3.18
+FROM node:24-alpine
 
 ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
 
 RUN apk add --no-cache \
     chromium \
     nss \
     freetype \
-    freetype-dev \
     harfbuzz \
     ca-certificates \
-    ttf-freefont \
-    nodejs \
-    yarn
+    ttf-freefont
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD true
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
-COPY package.json /service/package.json
-COPY yarn.lock /service/yarn.lock
-
-RUN cd /service; yarn install;
-
-RUN echo chromium-browser --version
-
-# Copy app source
-COPY . /service
-
-# Set work directory to /api
+# Set work directory to /service
 WORKDIR /service
 
+COPY package.json yarn.lock ./
+
+RUN yarn install --frozen-lockfile --production && yarn cache clean
+
+# Copy app source
+COPY . .
+
+USER node
+
 # set your port
-ENV PORT 2305
+ENV PORT=2305
 
 # expose the port to outside world
 EXPOSE 2305

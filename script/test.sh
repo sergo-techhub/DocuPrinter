@@ -1,21 +1,35 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-curl -X POST -H "Accept: application/json" -H "Content-type: application/json"  -d '{
-    "html": "<b>hello world <img src=\"https://www.placebear.com/400/300\"/></b>"
-}' 'http://localhost:2305/1/pdf' --output test.pdf
+BASE_URL="${BASE_URL:-http://localhost:2305}"
+OUT_DIR="${OUT_DIR:-.}"
+HTML='<b>hello world äöü € <img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs="/></b>'
+HTML_BASE64=$(printf '%s' "$HTML" | base64 | tr -d '\n')
 
-curl -X POST -H "Accept: application/json" -H "Content-type: application/json"  -d '{
-    "html": "PGI+aGVsbG8gd29ybGQgPGltZyBzcmM9Imh0dHBzOi8vd3d3LnBsYWNlYmVhci5jb20vNDAwLzMwMCIgLz48L2I+",
-    "base64": true
-}' 'http://localhost:2305/1/pdf' --output test_base64.pdf
+post() {
+  curl -sS --fail-with-body --retry 10 --retry-connrefused --retry-delay 1 \
+    -X POST -H "Accept: application/json" -H "Content-type: application/json" \
+    -d "$2" "$BASE_URL$1" --output "$3"
+}
 
-curl -X POST -H "Accept: application/json" -H "Content-type: application/json"  -d '{
-    "html": "<b>hello world <img src=\"https://www.placebear.com/400/300\"/></b>",
-    "export": {"type": "png"}
-}' 'http://localhost:2305/1/screenshot' --output test.png
+expect_magic() {
+  if ! head -c 8 "$1" | LC_ALL=C grep -aq "$2"; then
+    echo "$1 is not a valid $3" >&2
+    exit 1
+  fi
+  echo "$1 ok"
+}
 
-curl -X POST -H "Accept: application/json" -H "Content-type: application/json"  -d '{
-    "html": "PGI+aGVsbG8gd29ybGQgPGltZyBzcmM9Imh0dHBzOi8vd3d3LnBsYWNlYmVhci5jb20vNDAwLzMwMCIgLz48L2I+",
-    "base64": true,
-    "export": {"type": "png"}
-}' 'http://localhost:2305/1/screenshot' --output test_base64.png
+curl -sS --fail --retry 30 --retry-all-errors --retry-delay 1 "$BASE_URL/" >/dev/null
+
+post /1/pdf "{\"html\": $(jq -Rn --arg h "$HTML" '$h')}" "$OUT_DIR/test.pdf"
+expect_magic "$OUT_DIR/test.pdf" "%PDF" "PDF"
+
+post /1/pdf "{\"html\": \"$HTML_BASE64\", \"base64\": true, \"export\": {\"format\": \"A4\"}}" "$OUT_DIR/test_base64.pdf"
+expect_magic "$OUT_DIR/test_base64.pdf" "%PDF" "PDF"
+
+post /1/screenshot "{\"html\": $(jq -Rn --arg h "$HTML" '$h'), \"export\": {\"type\": \"png\"}}" "$OUT_DIR/test.png"
+expect_magic "$OUT_DIR/test.png" "PNG" "PNG"
+
+post /1/screenshot "{\"html\": \"$HTML_BASE64\", \"base64\": true}" "$OUT_DIR/test_base64.png"
+expect_magic "$OUT_DIR/test_base64.png" "PNG" "PNG"

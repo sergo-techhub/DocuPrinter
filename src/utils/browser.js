@@ -1,31 +1,45 @@
 const puppeteer = require("puppeteer");
 
-let browserWSEndpoint;
-async function getBrowserWebsocket() {
-  if (browserWSEndpoint) return browserWSEndpoint;
+let browserPromise;
 
-  const browser = await puppeteer.launch({
-    ...(process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
-      ? { executablePath: "/usr/bin/chromium-browser" }
-      : {}),
-    args: ["--no-sandbox", "--disable-dev-shm-usage", '--font-render-hinting=none', '--force-color-profile=srgb'],
-  });
-
-  browserWSEndpoint = browser.wsEndpoint();
-  browser.disconnect();
-  return browserWSEndpoint;
+function launchBrowser() {
+  return puppeteer
+    .launch({
+      args: [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--font-render-hinting=none",
+        "--force-color-profile=srgb",
+      ],
+    })
+    .then((browser) => {
+      browser.on("disconnected", () => {
+        browserPromise = undefined;
+      });
+      return browser;
+    })
+    .catch((error) => {
+      browserPromise = undefined;
+      throw error;
+    });
 }
 
-let browser;
 async function getBrowser() {
-  if (browser) return browser;
-  const browserWSEndpoint = await getBrowserWebsocket();
+  if (!browserPromise) {
+    browserPromise = launchBrowser();
+  }
+  return browserPromise;
+}
 
-  browser = await puppeteer.connect({ browserWSEndpoint });
-  return browser;
+async function closeBrowser() {
+  if (!browserPromise) return;
+  const browser = await browserPromise;
+  browserPromise = undefined;
+  await browser.close();
 }
 
 exports.getBrowser = getBrowser;
+exports.closeBrowser = closeBrowser;
 
 exports.getPageCount = async function getPageCount() {
   const browser = await getBrowser();
